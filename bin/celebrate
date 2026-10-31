@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Omarchy Bar Celebrate - Flash every icon with rapid random bright colors
+
+case "${1:-}" in
+  stop|reset)
+    exec omarchy-shell zm.celebrate reset
+    ;;
+  [0-9]*)
+    duration_ms=$(awk "BEGIN { print int($1 * 1000) }")
+    color="${2:-gray}"
+    exec omarchy-shell zm.celebrate startWith "$duration_ms" "$color"
+    ;;
+  *)
+    exec omarchy-shell zm.celebrate start "$@"
+    ;;
+esac

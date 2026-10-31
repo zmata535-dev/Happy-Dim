@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.zmata535-dev.happy-dim",
+  "name": "Happy Dim",
+  "version": "1.0.0",
+  "author": "zmata535-dev",
+  "license": "MIT",
+  "description": "Auto dim display with dynamic icon celebrate animations upon idle for Omarchy Linux",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Happy Dim",
+    "description": "Display auto-dimming with icon celebration effects and settings popup",
+    "category": "Settings",
+    "defaultSection": "right"
+  }
+}
