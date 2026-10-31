@@ -24,6 +24,11 @@ BarWidget {
   property string celebrateColor: "gray"
 
   property bool popupOpen: false
+  readonly property bool opened: popupOpen
+
+  function open() { popupOpen = true }
+  function close() { popupOpen = false }
+  function toggle() { popupOpen = !popupOpen }
 
   readonly property string minutesLabel: {
     if (minutes < 0.5) return Math.round(minutes * 60) + "s"
@@ -124,9 +129,17 @@ BarWidget {
         root.enabled = !root.enabled
         root.saveConfig()
       } else {
-        root.popupOpen = !root.popupOpen
+        root.toggle()
       }
     }
+  }
+
+  IpcHandler {
+    target: root.moduleName
+
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function toggle(): void { root.toggle() }
   }
 
   PopupCard {
@@ -135,6 +148,11 @@ BarWidget {
     bar: root.bar
     owner: root
     open: root.popupOpen
+    onOpenChanged: {
+      if (root.popupOpen !== open) {
+        root.popupOpen = open
+      }
+    }
     contentWidth: popup.fittedContentWidth(Style.space(330))
     contentHeight: popup.fittedContentHeight(contentCol.implicitHeight)
 
