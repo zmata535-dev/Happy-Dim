@@ -654,13 +654,13 @@ BarWidget {
         foreground: root.bar ? root.bar.barForeground : Commons.Color.foreground
       }
 
-      // Status indicator & Test action
+      // Status indicator & Actions
       Row {
         width: parent.width
         spacing: Style.space(8)
 
         Column {
-          width: parent.width - testBtn.width - Style.space(8)
+          width: parent.width - applyBtn.width - testBtn.width - Style.space(16)
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(2)
 
@@ -683,8 +683,22 @@ BarWidget {
         }
 
         Button {
+          id: applyBtn
+          text: "Apply"
+          iconText: "󰑓"
+          bordered: true
+          horizontalPadding: Style.space(10)
+          verticalPadding: Style.space(4)
+          foreground: root.bar ? root.bar.barForeground : Commons.Color.foreground
+          onClicked: {
+            root.saveConfig()
+            Quickshell.execDetached(["bash", "-c", "sleep 0.3 && omarchy-shell shell rescanPlugins"])
+          }
+        }
+
+        Button {
           id: testBtn
-          text: root.celebrateEnabled ? "Test Celebrate" : "Test Dim"
+          text: root.celebrateEnabled ? "Test" : "Test Dim"
           iconText: "󰃜"
           bordered: true
           horizontalPadding: Style.space(10)
