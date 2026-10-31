@@ -8,8 +8,9 @@ When inactivity is detected, **Happy Dim** dims your display to save battery/scr
 
 ## ✨ Features
 
-- **🌙 Display Auto-Dimming**: Automatically dims your screen brightness by a customizable factor (25%, 50%, or 75%) after a period of user inactivity.
-- **🎉 Bar Celebrate Effect**: Flashes every status bar icon with its own independent, rapid random bright color (75ms cycle) when idle begins.
+- **🌙 Display Auto-Dimming**: Automatically dims your screen brightness by a customizable factor (25%, 50%, or 75%) after a configurable period of inactivity.
+- **🖥️ Screensaver Aware**: Reads your system's screensaver deadline from `~/.config/omarchy/shell.json` (`idle.screensaver`), prominently displaying it in the settings card and dynamically constraining the dimming countdown below this deadline.
+- **🎉 Independent Celebrate Countdown**: Choose an independent countdown for status bar celebration (e.g. 15s, 30s) that is dynamically limited by your chosen Dim countdown, or select `(On Dim)` to sync them.
 - **🌫️ Post-Celebrate Transition**: After the flashing duration, icons smoothly transition into either **Neutral Gray** (`#808080`) or **Dark Gray** (`#404040`).
 - **⚡ Multi-Vector Instant Wake**: As soon as any activity occurs (mouse movement, keypress, workspace switch, window focus, or bar hover), display brightness and bar colors seamlessly return to normal.
 - **☕ Respects Stay Awake**: Automatically pauses dimming whenever Omarchy's system `stay-awake` indicator is active.
@@ -21,12 +22,14 @@ When inactivity is detected, **Happy Dim** dims your display to save battery/scr
 
 Clicking the `󰃞` bar widget opens the settings popup:
 
-- **Time Before Celebrate & Dim**: Choose between `15s`, `30s`, `1m`, `2m`, `3m`, `5m`, or `10m` of inactivity.
-- **Dim Level**: Choose `25% (very dim)`, `50% (half)`, or `75% (subtle)`.
-- **Celebrate on Dim**: Toggle the bar celebration animation on/off.
-- **Celebrate Duration**: Choose `1s`, `2s`, `3s`, `5s`, or `8s`.
-- **Post-Celebrate Color**: Switch between **`● Gray`** and **`● Dark Gray`**.
-- **Test Button**: Live test the entire celebrate + dim sequence instantly.
+1. **Screensaver Info Banner**: Shows current system screensaver timeout (e.g. `2m 30s (150s)`) and explains that dimming occurs before this limit.
+2. **Countdown to Dim**: Dynamic choices constrained strictly below the screensaver timeout (`15s`, `30s`, `45s`, `1m`, `1m 30s`, `2m`, etc.).
+3. **Dim Level**: Choose `25% (very dim)`, `50% (half)`, or `75% (subtle)`.
+4. **Celebrate Toggle**: Turn the icon celebration effect on or off.
+5. **Countdown to Celebrate**: Dynamic choices constrained to `≤ Dim countdown` (`5s`, `10s`, `15s`, `30s`, `45s`, up to `(On Dim)`).
+6. **Celebrate Duration**: Choose `1s`, `2s`, `3s`, `5s`, or `8s`.
+7. **Post-Celebrate Color**: Switch between **`● Gray`** and **`● Dark Gray`**.
+8. **Test Button**: Live test the entire celebrate + dim sequence instantly.
 
 ---
 
@@ -67,6 +70,9 @@ celebrate reset
 Or via Quickshell IPC directly:
 
 ```bash
+# Open / Close / Toggle Settings popup:
+omarchy-shell io.github.zmata535-dev.happy-dim toggle
+
 # Trigger celebration:
 omarchy-shell zm.celebrate start
 
@@ -85,6 +91,8 @@ Settings are saved in `~/.config/omarchy/happy-dim.json`:
 
 ```json
 {
+  "dimSeconds": 60,
+  "celebrateSeconds": 30,
   "minutes": 1.0,
   "dimPercentage": 25,
   "enabled": true,
@@ -98,4 +106,4 @@ Settings are saved in `~/.config/omarchy/happy-dim.json`:
 
 ## 📄 License
 
-[MIT](LICENSE) © [zmata535-dev](https://github.com/zmata535-dev)
+[MIT](LICENSE) © 2026 [zmata535-dev](https://github.com/zmata535-dev)

@@ -13,6 +13,8 @@ Item {
   readonly property string fallbackConfigPath: Quickshell.env("HOME") + "/.config/omarchy/auto-dim.json"
   readonly property string stayAwakePath: Quickshell.env("HOME") + "/.local/state/omarchy/indicators/stay-awake"
 
+  property int dimSeconds: 60
+  property int celebrateSeconds: 30
   property real minutes: 1.0
   property real dimFactor: 0.25
   property bool enabled: true
@@ -24,8 +26,10 @@ Item {
 
   property int savedBrightness: 0
   property bool isDimmed: false
+  property bool isCelebrated: false
 
-  readonly property int dimTimeoutSeconds: Math.max(1, Math.round(root.minutes * 60))
+  readonly property int dimTimeoutSeconds: Math.max(1, root.dimSeconds)
+  readonly property int celebrateTimeoutSeconds: Math.max(1, root.celebrateSeconds)
 
   function applyConfig(raw) {
     var parsed = null
@@ -34,8 +38,18 @@ Item {
     }
     if (!parsed || typeof parsed !== "object") return
 
-    if (typeof parsed.minutes === "number" && parsed.minutes > 0) {
+    if (typeof parsed.dimSeconds === "number" && parsed.dimSeconds > 0) {
+      root.dimSeconds = Math.round(parsed.dimSeconds)
+      root.minutes = root.dimSeconds / 60.0
+    } else if (typeof parsed.minutes === "number" && parsed.minutes > 0) {
+      root.dimSeconds = Math.max(1, Math.round(parsed.minutes * 60))
       root.minutes = parsed.minutes
+    }
+
+    if (typeof parsed.celebrateSeconds === "number" && parsed.celebrateSeconds > 0) {
+      root.celebrateSeconds = Math.min(Math.round(parsed.celebrateSeconds), root.dimSeconds)
+    } else {
+      root.celebrateSeconds = root.dimSeconds
     }
 
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage > 0 && parsed.dimPercentage <= 100) {
@@ -60,7 +74,7 @@ Item {
       root.celebrateColor = parsed.celebrateColor
     }
 
-    console.log("happy-dim service: loaded config (idle=" + root.dimTimeoutSeconds + "s, dimFactor=" + root.dimFactor + ", celebrate=" + root.celebrateEnabled + ", dur=" + root.celebrateDuration + "s, color=" + root.celebrateColor + ")")
+    console.log("happy-dim service: loaded config (dimIdle=" + root.dimTimeoutSeconds + "s, celebrateIdle=" + root.celebrateTimeoutSeconds + "s, dimFactor=" + root.dimFactor + ", celebrate=" + root.celebrateEnabled + ", dur=" + root.celebrateDuration + "s, color=" + root.celebrateColor + ")")
   }
 
   property FileView configFile: FileView {
@@ -98,11 +112,20 @@ Item {
     }
   }
 
-  function handleIdle() {
+  function handleCelebrateIdle() {
+    if (!root.enabled || root.stayAwake || root.isCelebrated || !root.celebrateEnabled) return
+    console.log("happy-dim: celebrate idle detected after " + root.celebrateTimeoutSeconds + "s")
+    root.isCelebrated = true
+    var durMs = root.celebrateDuration * 1000
+    Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "startWith", String(durMs), root.celebrateColor])
+  }
+
+  function handleDimIdle() {
     if (!root.enabled || root.stayAwake || root.isDimmed) return
-    console.log("happy-dim: idle detected after " + root.dimTimeoutSeconds + "s, dimming display...")
+    console.log("happy-dim: dim idle detected after " + root.dimTimeoutSeconds + "s, dimming display...")
     readBrightnessProc.running = true
-    if (root.celebrateEnabled) {
+    if (root.celebrateEnabled && !root.isCelebrated) {
+      root.isCelebrated = true
       var durMs = root.celebrateDuration * 1000
       Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "startWith", String(durMs), root.celebrateColor])
     }
@@ -116,7 +139,8 @@ Item {
       root.savedBrightness = 0
       Quickshell.execDetached(["omarchy-brightness-display", "--no-osd", restoreVal + "%"])
     }
-    if (root.celebrateEnabled) {
+    if (root.isCelebrated) {
+      root.isCelebrated = false
       Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "reset"])
     }
   }
@@ -133,7 +157,7 @@ Item {
           console.log("happy-dim: current brightness too low or unreadable: " + str)
           return
         }
-        if (!idleMonitor.isIdle) {
+        if (!dimIdleMonitor.isIdle) {
           console.log("happy-dim: user became active before dim could be applied")
           return
         }
@@ -147,13 +171,27 @@ Item {
   }
 
   IdleMonitor {
-    id: idleMonitor
+    id: celebrateIdleMonitor
+    enabled: root.enabled && !root.stayAwake && root.celebrateEnabled && root.celebrateTimeoutSeconds > 0
+    timeout: root.celebrateTimeoutSeconds
+    respectInhibitors: true
+    onIsIdleChanged: {
+      if (isIdle) {
+        root.handleCelebrateIdle()
+      } else {
+        root.handleActive()
+      }
+    }
+  }
+
+  IdleMonitor {
+    id: dimIdleMonitor
     enabled: root.enabled && !root.stayAwake && root.dimTimeoutSeconds > 0
     timeout: root.dimTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: {
       if (isIdle) {
-        root.handleIdle()
+        root.handleDimIdle()
       } else {
         root.handleActive()
       }
@@ -164,7 +202,7 @@ Item {
     if (root.isDimmed && root.savedBrightness > 0) {
       Quickshell.execDetached(["omarchy-brightness-display", "--no-osd", root.savedBrightness + "%"])
     }
-    if (root.celebrateEnabled) {
+    if (root.isCelebrated) {
       Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "reset"])
     }
   }

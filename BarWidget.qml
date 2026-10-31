@@ -12,8 +12,11 @@ BarWidget {
 
   readonly property string configPath: Quickshell.env("HOME") + "/.config/omarchy/happy-dim.json"
   readonly property string fallbackConfigPath: Quickshell.env("HOME") + "/.config/omarchy/auto-dim.json"
+  readonly property string shellConfigPath: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
   readonly property string stayAwakePath: Quickshell.env("HOME") + "/.local/state/omarchy/indicators/stay-awake"
 
+  property int dimSeconds: 60
+  property int celebrateSeconds: 30
   property real minutes: 1.0
   property int dimPercentage: 25
   property bool enabled: true
@@ -23,6 +26,8 @@ BarWidget {
   property int celebrateDuration: 3
   property string celebrateColor: "gray"
 
+  property int screensaverSeconds: 150
+
   property bool popupOpen: false
   readonly property bool opened: popupOpen
 
@@ -30,11 +35,85 @@ BarWidget {
   function close() { popupOpen = false }
   function toggle() { popupOpen = !popupOpen }
 
-  readonly property string minutesLabel: {
-    if (minutes < 0.5) return Math.round(minutes * 60) + "s"
-    if (minutes < 1.0) return Math.round(minutes * 60) + "s"
-    if (minutes === 1.0) return "1 min"
-    return minutes + " mins"
+  function formatSeconds(sec) {
+    if (!sec || sec <= 0) return "Disabled"
+    if (sec < 60) return sec + "s"
+    var m = Math.floor(sec / 60)
+    var s = sec % 60
+    if (s === 0) return m === 1 ? "1 min" : m + " mins"
+    return m + "m " + s + "s"
+  }
+
+  readonly property var allDimCandidates: [15, 30, 45, 60, 90, 120, 150, 180, 240, 300, 600]
+
+  readonly property var dimOptions: {
+    var maxSec = root.screensaverSeconds > 0 ? root.screensaverSeconds : 999999
+    var list = []
+    for (var i = 0; i < allDimCandidates.length; i++) {
+      var sec = allDimCandidates[i]
+      if (sec < maxSec) {
+        list.push({ label: formatSeconds(sec), sec: sec })
+      }
+    }
+    if (list.length === 0) {
+      var fallback = Math.max(5, Math.floor(maxSec * 0.75))
+      list.push({ label: formatSeconds(fallback), sec: fallback })
+    }
+    return list
+  }
+
+  readonly property var allCelebrateCandidates: [5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
+
+  readonly property var celebrateOptions: {
+    var maxSec = root.dimSeconds
+    var list = []
+    for (var i = 0; i < allCelebrateCandidates.length; i++) {
+      var sec = allCelebrateCandidates[i]
+      if (sec < maxSec) {
+        list.push({ label: formatSeconds(sec), sec: sec })
+      }
+    }
+    list.push({ label: formatSeconds(maxSec) + " (On Dim)", sec: maxSec })
+    return list
+  }
+
+  function setDimSeconds(sec) {
+    root.dimSeconds = sec
+    root.minutes = sec / 60.0
+    if (root.celebrateSeconds > root.dimSeconds) {
+      root.celebrateSeconds = root.dimSeconds
+    }
+    root.saveConfig()
+  }
+
+  function setCelebrateSeconds(sec) {
+    root.celebrateSeconds = Math.min(sec, root.dimSeconds)
+    root.saveConfig()
+  }
+
+  function applyShellConfig(raw) {
+    var parsed = null
+    if (raw && String(raw).trim() !== "") {
+      try { parsed = JSON.parse(raw) } catch (e) { parsed = null }
+    }
+    if (parsed && parsed.idle && typeof parsed.idle.screensaver === "number" && parsed.idle.screensaver > 0) {
+      root.screensaverSeconds = parsed.idle.screensaver
+    } else {
+      root.screensaverSeconds = 150
+    }
+
+    // Ensure dimSeconds is strictly less than screensaverSeconds
+    if (root.screensaverSeconds > 0 && root.dimSeconds >= root.screensaverSeconds) {
+      var maxOpt = 15
+      for (var i = 0; i < root.dimOptions.length; i++) {
+        if (root.dimOptions[i].sec > maxOpt) maxOpt = root.dimOptions[i].sec
+      }
+      root.dimSeconds = maxOpt
+      root.minutes = maxOpt / 60.0
+      if (root.celebrateSeconds > root.dimSeconds) {
+        root.celebrateSeconds = root.dimSeconds
+      }
+    }
   }
 
   function applyConfig(raw) {
@@ -44,7 +123,20 @@ BarWidget {
     }
     if (!parsed || typeof parsed !== "object") return
 
-    if (typeof parsed.minutes === "number" && parsed.minutes > 0) root.minutes = parsed.minutes
+    if (typeof parsed.dimSeconds === "number" && parsed.dimSeconds > 0) {
+      root.dimSeconds = Math.round(parsed.dimSeconds)
+      root.minutes = root.dimSeconds / 60.0
+    } else if (typeof parsed.minutes === "number" && parsed.minutes > 0) {
+      root.dimSeconds = Math.max(1, Math.round(parsed.minutes * 60))
+      root.minutes = parsed.minutes
+    }
+
+    if (typeof parsed.celebrateSeconds === "number" && parsed.celebrateSeconds > 0) {
+      root.celebrateSeconds = Math.min(Math.round(parsed.celebrateSeconds), root.dimSeconds)
+    } else {
+      root.celebrateSeconds = root.dimSeconds
+    }
+
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage > 0 && parsed.dimPercentage <= 100) {
       root.dimPercentage = Math.round(parsed.dimPercentage)
     }
@@ -60,6 +152,8 @@ BarWidget {
 
   function saveConfig() {
     var data = {
+      dimSeconds: root.dimSeconds,
+      celebrateSeconds: root.celebrateSeconds,
       minutes: root.minutes,
       dimPercentage: root.dimPercentage,
       enabled: root.enabled,
@@ -73,6 +167,15 @@ BarWidget {
     } else {
       Quickshell.execDetached(["bash", "-c", "cat > \"$HOME/.config/omarchy/happy-dim.json\" << 'EOF'\n" + str + "EOF\ncp \"$HOME/.config/omarchy/happy-dim.json\" \"$HOME/.config/omarchy/auto-dim.json\" 2>/dev/null || true\n"])
     }
+  }
+
+  property FileView shellConfigFile: FileView {
+    path: root.shellConfigPath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.applyShellConfig(text())
+    onLoadFailed: root.applyShellConfig("")
   }
 
   property FileView configFile: FileView {
@@ -105,6 +208,7 @@ BarWidget {
     interval: 1000
     running: true
     onTriggered: {
+      root.shellConfigFile.reload()
       root.configFile.reload()
       root.stayAwakeFile.reload()
     }
@@ -122,7 +226,9 @@ BarWidget {
     dimmed: !root.enabled
     active: root.enabled
     useActiveColor: false
-    tooltipText: root.enabled ? ("Happy Dim (" + root.minutesLabel + " · " + root.dimPercentage + "%" + (root.celebrateEnabled ? " · Celebrate" : "") + ")") : "Happy Dim (Disabled)"
+    tooltipText: root.enabled
+      ? ("Happy Dim (Dim: " + root.formatSeconds(root.dimSeconds) + " · " + root.dimPercentage + "%" + (root.celebrateEnabled ? (" · Celebrate: " + root.formatSeconds(root.celebrateSeconds)) : "") + ")")
+      : "Happy Dim (Disabled)"
 
     onPressed: function(b) {
       if (b === Qt.RightButton) {
@@ -153,7 +259,7 @@ BarWidget {
         root.popupOpen = open
       }
     }
-    contentWidth: popup.fittedContentWidth(Style.space(330))
+    contentWidth: popup.fittedContentWidth(Style.space(350))
     contentHeight: popup.fittedContentHeight(contentCol.implicitHeight)
 
     Column {
@@ -188,7 +294,9 @@ BarWidget {
           }
 
           Text {
-            text: root.enabled ? ("Dims display after " + root.minutesLabel + (root.celebrateEnabled ? " + Celebrate" : "")) : "Auto dimming paused"
+            text: root.enabled
+              ? ("Dims after " + root.formatSeconds(root.dimSeconds) + (root.celebrateEnabled ? (" · Celebrate at " + root.formatSeconds(root.celebrateSeconds)) : ""))
+              : "Auto dimming paused"
             color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.6)
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
@@ -206,51 +314,107 @@ BarWidget {
         }
       }
 
+      // Screensaver Information Card
+      BorderSurface {
+        width: parent.width
+        radius: Style.cornerRadius
+        color: Qt.rgba(Commons.Color.accent.r, Commons.Color.accent.g, Commons.Color.accent.b, 0.08)
+        borderSpec: Border.controlSpec("normal", root.bar ? root.bar.barForeground : Commons.Color.foreground, Commons.Color.accent)
+        implicitHeight: ssRow.implicitHeight + Style.space(16)
+
+        Row {
+          id: ssRow
+          anchors.fill: parent
+          anchors.margins: Style.space(10)
+          spacing: Style.space(10)
+
+          Text {
+            text: "󰍹"
+            color: Commons.Color.accent
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.title
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Column {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - Style.space(40)
+            spacing: Style.space(2)
+
+            Row {
+              spacing: Style.space(6)
+              Text {
+                text: "Screensaver Timeout:"
+                color: root.bar ? root.bar.barForeground : Commons.Color.foreground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+              }
+              Text {
+                text: root.screensaverSeconds > 0 ? (root.formatSeconds(root.screensaverSeconds) + " (" + root.screensaverSeconds + "s)") : "Disabled"
+                color: Commons.Color.accent
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+              }
+            }
+
+            Text {
+              text: "System limit from shell.json. Screen dimming is constrained below this countdown."
+              color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.55)
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+              width: parent.width
+            }
+          }
+        }
+      }
+
       PanelSeparator {
         width: parent.width
         foreground: root.bar ? root.bar.barForeground : Commons.Color.foreground
       }
 
-      // Timeout Setting
+      // Countdown to Dim Setting (Limited by screensaver)
       Column {
         width: parent.width
         spacing: Style.space(6)
 
-        Text {
-          text: "TIME BEFORE CELEBRATE & DIM"
-          color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.5)
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.caption
-          font.bold: true
+        Row {
+          spacing: Style.space(6)
+          Text {
+            text: "COUNTDOWN TO DIM"
+            color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.5)
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+            font.bold: true
+          }
+          Text {
+            text: "(Limit: < " + root.formatSeconds(root.screensaverSeconds) + ")"
+            color: Commons.Color.accent
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+          }
         }
 
-        Row {
-          spacing: Style.space(5)
+        Flow {
+          width: parent.width
+          spacing: Style.space(6)
 
           Repeater {
-            model: [
-              { label: "15s", val: 0.25 },
-              { label: "30s", val: 0.5 },
-              { label: "1m",  val: 1.0 },
-              { label: "2m",  val: 2.0 },
-              { label: "3m",  val: 3.0 },
-              { label: "5m",  val: 5.0 },
-              { label: "10m", val: 10.0 }
-            ]
+            model: root.dimOptions
 
             Button {
               required property var modelData
               text: modelData.label
-              selected: Math.abs(root.minutes - modelData.val) < 0.01
+              selected: root.dimSeconds === modelData.sec
               active: selected
               bordered: true
-              horizontalPadding: Style.space(7)
+              horizontalPadding: Style.space(8)
               verticalPadding: Style.space(4)
               foreground: root.bar ? root.bar.barForeground : Commons.Color.foreground
-              onClicked: {
-                root.minutes = modelData.val
-                root.saveConfig()
-              }
+              onClicked: root.setDimSeconds(modelData.sec)
             }
           }
         }
@@ -321,7 +485,7 @@ BarWidget {
           spacing: Style.space(2)
 
           Text {
-            text: "Celebrate on Dim"
+            text: "Bar Icon Celebration"
             color: root.bar ? root.bar.barForeground : Commons.Color.foreground
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.body
@@ -329,7 +493,9 @@ BarWidget {
           }
 
           Text {
-            text: root.celebrateEnabled ? ("Flashes " + root.celebrateDuration + "s then " + root.celebrateColor) : "Celebrate disabled"
+            text: root.celebrateEnabled
+              ? ("Triggers at " + root.formatSeconds(root.celebrateSeconds) + " idle (" + root.celebrateDuration + "s flash → " + root.celebrateColor + ")")
+              : "Celebrate disabled"
             color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.6)
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
@@ -347,6 +513,51 @@ BarWidget {
         }
       }
 
+      // Countdown to Celebrate Setting (Limited by Dim)
+      Column {
+        width: parent.width
+        spacing: Style.space(6)
+        visible: root.celebrateEnabled
+
+        Row {
+          spacing: Style.space(6)
+          Text {
+            text: "COUNTDOWN TO CELEBRATE"
+            color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.5)
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+            font.bold: true
+          }
+          Text {
+            text: "(Limit: ≤ " + root.formatSeconds(root.dimSeconds) + ")"
+            color: Commons.Color.accent
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+        }
+
+        Flow {
+          width: parent.width
+          spacing: Style.space(6)
+
+          Repeater {
+            model: root.celebrateOptions
+
+            Button {
+              required property var modelData
+              text: modelData.label
+              selected: root.celebrateSeconds === modelData.sec
+              active: selected
+              bordered: true
+              horizontalPadding: Style.space(8)
+              verticalPadding: Style.space(4)
+              foreground: root.bar ? root.bar.barForeground : Commons.Color.foreground
+              onClicked: root.setCelebrateSeconds(modelData.sec)
+            }
+          }
+        }
+      }
+
       // Celebrate Duration
       Column {
         width: parent.width
@@ -354,7 +565,7 @@ BarWidget {
         visible: root.celebrateEnabled
 
         Text {
-          text: "CELEBRATE DURATION"
+          text: "CELEBRATE FLASH DURATION"
           color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.5)
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.caption
