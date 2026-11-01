@@ -10,12 +10,11 @@ When inactivity is detected, **Happy Dim** dims your display to save battery/scr
 
 - **🌙 Display Auto-Dimming**: Automatically dims your screen brightness by a customizable factor (25%, 50%, or 75%) after a configurable period of inactivity.
 - **🖥️ Screensaver Aware**: Reads your system's screensaver deadline from `~/.config/omarchy/shell.json` (`idle.screensaver`), prominently displaying it in the settings card and dynamically constraining the dimming countdown below this deadline.
-- **🎉 Celebrate Timing (Before, After, or Both)**:
-  - **Before Reset (Idle)**: Celebrate when inactivity countdown triggers, before any user activity reset.
-  - **After Reset (Wake)**: Celebrate when user activity returns / display wakes up from dim (welcome-back celebration).
-  - **Both**: Celebrate on idle, and celebrate again upon waking up!
-- **⏱️ Independent Celebrate Countdown**: Choose an independent countdown for status bar celebration (when timing is Before or Both), dynamically limited by your chosen Dim countdown.
-- **🌫️ Post-Celebrate Transition**: After the flashing duration on idle, icons smoothly transition into either **Neutral Gray** (`#808080`) or **Dark Gray** (`#404040`).
+- **🎉 Celebrate Timing (With Dim, With Reset, or Both)**:
+  - **With Dim**: Flashes rapidly when display dims on idle, transitions into gray, and restores on wake.
+  - **With Reset**: Celebrates when user activity returns / display wakes up from dim (flashes first, stays in gray briefly, then smoothly restores default color).
+  - **Both**: Celebrates both when entering idle dim and upon waking up from reset!
+- **🌫️ Post-Celebrate Transition**: After the flashing duration, icons smoothly transition into either **Neutral Gray** (`#808080`) or **Dark Gray** (`#404040`) before restoring default colors.
 - **⚡ Multi-Vector Instant Wake**: As soon as any activity occurs (mouse movement, keypress, workspace switch, window focus, or bar hover), display brightness and bar colors seamlessly return to normal.
 - **☕ Respects Stay Awake**: Automatically pauses dimming whenever Omarchy's system `stay-awake` indicator is active.
 - **🎛️ Interactive Settings Popup**: Configure all parameters directly from the status bar popup menu, with an **Apply** button to reload service changes immediately.
@@ -31,14 +30,13 @@ Clicking the `󰃞` bar widget opens the settings popup:
 3. **Dim Level**: Choose `25% (very dim)`, `50% (half)`, or `75% (subtle)`.
 4. **Celebrate Toggle**: Turn the icon celebration effect on or off.
 5. **Celebrate Timing**:
-   - `● Before Reset (Idle)`: Flashes when idle begins.
-   - `● After Reset (Wake)`: Flashes upon waking up from dim.
-   - `● Both`: Flashes both on idle and upon waking up!
-6. **Countdown to Celebrate**: Dynamic choices constrained to `≤ Dim countdown` (visible when timing is Before or Both).
-7. **Celebrate Flash Duration**: Choose `1s`, `2s`, `3s`, `5s`, or `8s`.
-8. **Post-Celebrate Color**: Switch between **`● Gray`** and **`● Dark Gray`**.
-9. **Apply Button**: Instantly reloads plugins and restarts the service with your changes.
-10. **Test Button**: Live test the entire celebrate + dim sequence according to your selected timing mode.
+   - `● With Dim`: Flashes when dimming begins.
+   - `● With Reset`: Flashes first on wake/reset, transitions to gray, then restores default theme color.
+   - `● Both`: Flashes both on dim and on wake/reset!
+6. **Celebrate Flash Duration**: Choose `1s`, `2s`, `3s`, `5s`, or `8s`.
+7. **Post-Celebrate Color**: Switch between **`● Gray`** and **`● Dark Gray`**.
+8. **Apply Button**: Instantly reloads plugins and restarts the service with your changes.
+9. **Test Button**: Live test the entire celebrate + dim sequence according to your selected timing mode.
 
 ---
 
@@ -101,8 +99,7 @@ Settings are saved in `~/.config/omarchy/happy-dim.json`:
 ```json
 {
   "dimSeconds": 60,
-  "celebrateSeconds": 30,
-  "celebrateTiming": "before",
+  "celebrateTiming": "both",
   "minutes": 1.0,
   "dimPercentage": 25,
   "enabled": true,
