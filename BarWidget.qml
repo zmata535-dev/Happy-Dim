@@ -17,6 +17,7 @@ BarWidget {
 
   property int dimSeconds: 60
   property int celebrateSeconds: 30
+  property string celebrateTiming: "before" // "before", "after", "both"
   property real minutes: 1.0
   property int dimPercentage: 25
   property bool enabled: true
@@ -102,7 +103,6 @@ BarWidget {
       root.screensaverSeconds = 150
     }
 
-    // Ensure dimSeconds is strictly less than screensaverSeconds
     if (root.screensaverSeconds > 0 && root.dimSeconds >= root.screensaverSeconds) {
       var maxOpt = 15
       for (var i = 0; i < root.dimOptions.length; i++) {
@@ -137,6 +137,12 @@ BarWidget {
       root.celebrateSeconds = root.dimSeconds
     }
 
+    if (parsed.celebrateTiming === "before" || parsed.celebrateTiming === "after" || parsed.celebrateTiming === "both") {
+      root.celebrateTiming = parsed.celebrateTiming
+    } else {
+      root.celebrateTiming = "before"
+    }
+
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage > 0 && parsed.dimPercentage <= 100) {
       root.dimPercentage = Math.round(parsed.dimPercentage)
     }
@@ -154,6 +160,7 @@ BarWidget {
     var data = {
       dimSeconds: root.dimSeconds,
       celebrateSeconds: root.celebrateSeconds,
+      celebrateTiming: root.celebrateTiming,
       minutes: root.minutes,
       dimPercentage: root.dimPercentage,
       enabled: root.enabled,
@@ -173,7 +180,6 @@ BarWidget {
     path: root.shellConfigPath
     watchChanges: true
     printErrors: false
-    onFileChanged: reload()
     onLoaded: root.applyShellConfig(text())
     onLoadFailed: root.applyShellConfig("")
   }
@@ -227,7 +233,7 @@ BarWidget {
     active: root.enabled
     useActiveColor: false
     tooltipText: root.enabled
-      ? ("Happy Dim (Dim: " + root.formatSeconds(root.dimSeconds) + " · " + root.dimPercentage + "%" + (root.celebrateEnabled ? (" · Celebrate: " + root.formatSeconds(root.celebrateSeconds)) : "") + ")")
+      ? ("Happy Dim (Dim: " + root.formatSeconds(root.dimSeconds) + " · " + root.dimPercentage + "%" + (root.celebrateEnabled ? (" · Celebrate: " + root.celebrateTiming) : "") + ")")
       : "Happy Dim (Disabled)"
 
     onPressed: function(b) {
@@ -259,7 +265,7 @@ BarWidget {
         root.popupOpen = open
       }
     }
-    contentWidth: popup.fittedContentWidth(Style.space(350))
+    contentWidth: popup.fittedContentWidth(Style.space(360))
     contentHeight: popup.fittedContentHeight(contentCol.implicitHeight)
 
     Column {
@@ -295,7 +301,7 @@ BarWidget {
 
           Text {
             text: root.enabled
-              ? ("Dims after " + root.formatSeconds(root.dimSeconds) + (root.celebrateEnabled ? (" · Celebrate at " + root.formatSeconds(root.celebrateSeconds)) : ""))
+              ? ("Dims after " + root.formatSeconds(root.dimSeconds) + (root.celebrateEnabled ? (" · Celebrate " + root.celebrateTiming + " reset") : ""))
               : "Auto dimming paused"
             color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.6)
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -493,9 +499,12 @@ BarWidget {
           }
 
           Text {
-            text: root.celebrateEnabled
-              ? ("Triggers at " + root.formatSeconds(root.celebrateSeconds) + " idle (" + root.celebrateDuration + "s flash → " + root.celebrateColor + ")")
-              : "Celebrate disabled"
+            text: {
+              if (!root.celebrateEnabled) return "Celebrate disabled"
+              if (root.celebrateTiming === "before") return "Flashes on idle (" + root.celebrateDuration + "s) before reset"
+              if (root.celebrateTiming === "after") return "Flashes on wake-up (" + root.celebrateDuration + "s) after reset"
+              return "Flashes both on idle and after reset"
+            }
             color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.6)
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
@@ -513,11 +522,64 @@ BarWidget {
         }
       }
 
-      // Countdown to Celebrate Setting (Limited by Dim)
+      // Celebrate Timing Setting (Before / After Reset / Both)
       Column {
         width: parent.width
         spacing: Style.space(6)
         visible: root.celebrateEnabled
+
+        Text {
+          text: "CELEBRATE TIMING"
+          color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.5)
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+
+        Row {
+          spacing: Style.space(6)
+
+          Repeater {
+            model: [
+              { label: "Before Reset (Idle)", val: "before" },
+              { label: "After Reset (Wake)", val: "after" },
+              { label: "Both", val: "both" }
+            ]
+
+            Button {
+              required property var modelData
+              text: modelData.label
+              selected: root.celebrateTiming === modelData.val
+              active: selected
+              bordered: true
+              horizontalPadding: Style.space(8)
+              verticalPadding: Style.space(4)
+              foreground: root.bar ? root.bar.barForeground : Commons.Color.foreground
+              onClicked: {
+                root.celebrateTiming = modelData.val
+                root.saveConfig()
+              }
+            }
+          }
+        }
+
+        Text {
+          text: {
+            if (root.celebrateTiming === "before") return "Celebrates when idle countdown triggers, before user returns."
+            if (root.celebrateTiming === "after") return "Celebrates when user activity returns / screen wakes up from dim."
+            return "Celebrates on idle, and celebrates again upon waking up!"
+          }
+          color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.5)
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+        }
+      }
+
+      // Countdown to Celebrate Setting (Visible when timing is "before" or "both")
+      Column {
+        width: parent.width
+        spacing: Style.space(6)
+        visible: root.celebrateEnabled && root.celebrateTiming !== "after"
 
         Row {
           spacing: Style.space(6)
@@ -602,14 +664,14 @@ BarWidget {
         }
       }
 
-      // Post-Celebrate Color
+      // Post-Celebrate Color (For idle transition)
       Column {
         width: parent.width
         spacing: Style.space(6)
-        visible: root.celebrateEnabled
+        visible: root.celebrateEnabled && root.celebrateTiming !== "after"
 
         Text {
-          text: "POST-CELEBRATE COLOR"
+          text: "POST-CELEBRATE COLOR (IDLE)"
           color: Qt.rgba(root.bar ? root.bar.barForeground.r : 1, root.bar ? root.bar.barForeground.g : 1, root.bar ? root.bar.barForeground.b : 1, 0.5)
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.caption
@@ -707,22 +769,27 @@ BarWidget {
           onClicked: {
             var dur = root.celebrateEnabled ? root.celebrateDuration : 0
             var col = root.celebrateColor
-            var celebrateCmd = root.celebrateEnabled
+            var timing = root.celebrateTiming
+            var dimPct = root.dimPercentage
+            var waitSec = (dur > 0 ? dur + 2 : 3)
+
+            var beforeCelebrate = (root.celebrateEnabled && (timing === "before" || timing === "both"))
               ? "omarchy-shell zm.celebrate startWith " + (dur * 1000) + " " + col + "\n"
               : ""
-            var resetCmd = root.celebrateEnabled
-              ? "omarchy-shell zm.celebrate reset\n"
-              : ""
-            var waitSec = (dur > 0 ? dur + 2 : 3)
+
+            var afterCelebrate = (root.celebrateEnabled && (timing === "after" || timing === "both"))
+              ? "omarchy-shell zm.celebrate startWith " + ((dur + 5) * 1000) + " gray\nsleep " + dur + "\nomarchy-shell zm.celebrate reset\n"
+              : "omarchy-shell zm.celebrate reset\n"
+
             Quickshell.execDetached(["bash", "-c",
               "orig=$(omarchy brightness display)\n" +
-              "half=$(( orig * " + root.dimPercentage + " / 100 ))\n" +
+              "half=$(( orig * " + dimPct + " / 100 ))\n" +
               "(( half < 1 )) && half=1\n" +
-              celebrateCmd +
+              beforeCelebrate +
               "omarchy brightness display --no-osd \"${half}%\"\n" +
               "sleep " + waitSec + "\n" +
               "omarchy brightness display --no-osd \"${orig}%\"\n" +
-              resetCmd
+              afterCelebrate
             ])
           }
         }

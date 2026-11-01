@@ -15,6 +15,7 @@ Item {
 
   property int dimSeconds: 60
   property int celebrateSeconds: 30
+  property string celebrateTiming: "before" // "before", "after", "both"
   property real minutes: 1.0
   property real dimFactor: 0.25
   property bool enabled: true
@@ -52,6 +53,12 @@ Item {
       root.celebrateSeconds = root.dimSeconds
     }
 
+    if (parsed.celebrateTiming === "before" || parsed.celebrateTiming === "after" || parsed.celebrateTiming === "both") {
+      root.celebrateTiming = parsed.celebrateTiming
+    } else {
+      root.celebrateTiming = "before"
+    }
+
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage > 0 && parsed.dimPercentage <= 100) {
       root.dimFactor = parsed.dimPercentage / 100.0
     } else if (typeof parsed.dimFactor === "number" && parsed.dimFactor > 0 && parsed.dimFactor <= 1.0) {
@@ -74,7 +81,7 @@ Item {
       root.celebrateColor = parsed.celebrateColor
     }
 
-    console.log("happy-dim service: loaded config (dimIdle=" + root.dimTimeoutSeconds + "s, celebrateIdle=" + root.celebrateTimeoutSeconds + "s, dimFactor=" + root.dimFactor + ", celebrate=" + root.celebrateEnabled + ", dur=" + root.celebrateDuration + "s, color=" + root.celebrateColor + ")")
+    console.log("happy-dim service: loaded config (dimIdle=" + root.dimTimeoutSeconds + "s, celebrateIdle=" + root.celebrateTimeoutSeconds + "s, timing=" + root.celebrateTiming + ", dimFactor=" + root.dimFactor + ", celebrate=" + root.celebrateEnabled + ", dur=" + root.celebrateDuration + "s, color=" + root.celebrateColor + ")")
   }
 
   property FileView configFile: FileView {
@@ -114,17 +121,19 @@ Item {
 
   function handleCelebrateIdle() {
     if (!root.enabled || root.stayAwake || root.isCelebrated || !root.celebrateEnabled) return
-    console.log("happy-dim: celebrate idle detected after " + root.celebrateTimeoutSeconds + "s")
-    root.isCelebrated = true
-    var durMs = root.celebrateDuration * 1000
-    Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "startWith", String(durMs), root.celebrateColor])
+    if (root.celebrateTiming === "before" || root.celebrateTiming === "both") {
+      console.log("happy-dim: celebrate idle (before reset) detected after " + root.celebrateTimeoutSeconds + "s")
+      root.isCelebrated = true
+      var durMs = root.celebrateDuration * 1000
+      Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "startWith", String(durMs), root.celebrateColor])
+    }
   }
 
   function handleDimIdle() {
     if (!root.enabled || root.stayAwake || root.isDimmed) return
     console.log("happy-dim: dim idle detected after " + root.dimTimeoutSeconds + "s, dimming display...")
     readBrightnessProc.running = true
-    if (root.celebrateEnabled && !root.isCelebrated) {
+    if (root.celebrateEnabled && !root.isCelebrated && (root.celebrateTiming === "before" || root.celebrateTiming === "both")) {
       root.isCelebrated = true
       var durMs = root.celebrateDuration * 1000
       Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "startWith", String(durMs), root.celebrateColor])
@@ -132,6 +141,9 @@ Item {
   }
 
   function handleActive() {
+    var wasDimmed = root.isDimmed
+    var wasCelebrated = root.isCelebrated
+
     if (root.isDimmed && root.savedBrightness > 0) {
       var restoreVal = root.savedBrightness
       console.log("happy-dim: user activity detected, restoring brightness to " + restoreVal + "%")
@@ -139,8 +151,20 @@ Item {
       root.savedBrightness = 0
       Quickshell.execDetached(["omarchy-brightness-display", "--no-osd", restoreVal + "%"])
     }
-    if (root.isCelebrated) {
-      root.isCelebrated = false
+
+    root.isCelebrated = false
+
+    // Celebrate After Reset (On Wake)
+    if (root.celebrateEnabled && (root.celebrateTiming === "after" || root.celebrateTiming === "both") && (wasDimmed || wasCelebrated)) {
+      console.log("happy-dim: celebrating after reset (on wake)!")
+      var dur = root.celebrateDuration
+      var durMs = dur * 1000
+      Quickshell.execDetached(["bash", "-c",
+        "omarchy-shell zm.celebrate startWith " + (durMs + 5000) + " gray && " +
+        "sleep " + dur + " && " +
+        "omarchy-shell zm.celebrate reset"
+      ])
+    } else if (wasCelebrated) {
       Quickshell.execDetached(["omarchy-shell", "zm.celebrate", "reset"])
     }
   }
@@ -172,7 +196,7 @@ Item {
 
   IdleMonitor {
     id: celebrateIdleMonitor
-    enabled: root.enabled && !root.stayAwake && root.celebrateEnabled && root.celebrateTimeoutSeconds > 0
+    enabled: root.enabled && !root.stayAwake && root.celebrateEnabled && (root.celebrateTiming === "before" || root.celebrateTiming === "both") && root.celebrateTimeoutSeconds > 0
     timeout: root.celebrateTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: {
